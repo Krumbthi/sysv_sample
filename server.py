@@ -44,7 +44,7 @@ class Server(object):
                 self.Semaphore.acquire()
 
             s = utils.read_from_memory(self.Memory)
-            
+
         elif self.State == "INCR":
             pass
         elif self.State == "DECR":
@@ -53,22 +53,7 @@ class Server(object):
             pass
 
         for i in range(0, self.Params["ITERATIONS"]):
-            utils.say("iteration %d" % i)
-            if not self.Params["LIVE_DANGEROUSLY"]:
-                # Releasing the semaphore...
-                utils.say("releasing the semaphore")
-                self.Semaphore.release()
-                # ...and wait for it to become available again. In real code it'd be
-                # wise to sleep briefly before calling .acquire() in order to be
-                # polite and give other processes an opportunity to grab the semaphore
-                # while it is free and thereby avoid starvation. But this code is meant
-                # to be a stress test that maximizes the opportunity for shared memory
-                # corruption, and politeness has no place in that.
-                utils.say("acquiring the semaphore...")
-                self.Semaphore.acquire()
-
-            s = utils.read_from_memory(self.Memory)
-
+            
             # I keep checking the shared memory until something new has been written.
             while s == what_i_wrote:
                 if not self.Params["LIVE_DANGEROUSLY"]:
