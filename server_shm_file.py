@@ -12,6 +12,7 @@ import globaltimer
 # Utils for this demo
 import utils
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Logging
 # ----------------------------------------------------------------------------------------------------------------------
@@ -44,13 +45,17 @@ class Server(object):
             self.Semaphore.release()
             # Now the semaphore is safe to use.
 
-        try:
-            self.Memory = sysv_ipc.SharedMemory(self.Params["KEY"], sysv_ipc.IPC_CREX)
-        except sysv_ipc.ExistentialError as err:
-            self.Logger.debug(err)
-            self.Memory = sysv_ipc.SharedMemory(self.Params["KEY"])
-        else:
-            self.Memory.release()
+        os.system("touch %s" % os.path.normpath(self.Params["CMD_FILE"]))
+        os.system("touch %s" % os.path.normpath(self.Params["RES_FILE"]))
+
+        with open(os.path.normpath(self.Params["CMD_FILE"]), "w+b") as f:
+            f.write(42*b'\0')
+
+        with open(os.path.normpath(self.Params["RES_FILE"]), "w+b") as f:
+            f.write(42*b'\0')
+
+        self.CmdFile = open(os.path.normpath(self.Params["CMD_FILE"]), "r+")
+        self.RespFile = open(os.path.normpath(self.Params["RES_FILE"]), "r+")
         
         self.Logger.debug("Setup done")
         return True

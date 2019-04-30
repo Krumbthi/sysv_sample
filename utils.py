@@ -1,5 +1,12 @@
 import time
 import sys
+import logging
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Logging
+# ----------------------------------------------------------------------------------------------------------------------
+logging.basicConfig(format='%(asctime)s %(name)s %(message)s', level=logging.DEBUG)
+Logger = logging.getLogger(__name__)
 
 PY_MAJOR_VERSION = sys.version_info[0]
 
@@ -13,8 +20,8 @@ def say(s):
     who = sys.argv[0]
     if who.endswith(".py"):
         who = who[:-3]
-    s = "%s@%1.6f: %s" % (who, time.time(), s)
-    print(s)
+    s = "-- %s@%1.6f: %s" % (who, time.time(), s)
+    Logger.debug(s)
 
 
 def write_to_memory(memory, s):
