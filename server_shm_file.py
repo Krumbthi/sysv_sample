@@ -1,5 +1,8 @@
 # Python modules
+import fcntl
+import os
 import sys
+
 import hashlib
 
 # 3rd party modules
@@ -26,11 +29,21 @@ class Server(object):
         self.Logger = logging.getLogger(__class__.__name__)
         self.State = "IDLE"
         self.Cntr = 0
+        self.Params = utils.read_params()
+        self.CreateFiles()
+
+    def CreateFiles(self):
+        self.Logger.debug("Create files")
+        os.system("touch %s" % os.path.normpath(self.Params["CMD_FILE"]))
+        os.system("touch %s" % os.path.normpath(self.Params["RES_FILE"]))
+        with open(os.path.normpath(self.Params["CMD_FILE"]), "w+b") as f:
+            f.write(b'\0')
+
+        with open(os.path.normpath(self.Params["RES_FILE"]), "w+b") as f:
+            f.write(b'\0')
 
     def Setup(self):
-        utils.say("Oooo 'ello, I'm Mrs. Premise!")
-        self.Params = utils.read_params()
-        
+        self.Logger.debug("Setup")
         try:
             self.Semaphore = sysv_ipc.Semaphore(self.Params["KEY"], sysv_ipc.IPC_CREX)
         except sysv_ipc.ExistentialError as err:
@@ -41,25 +54,13 @@ class Server(object):
             while not self.Semaphore.o_time:
                 time.sleep(.1)
         else:
+            self.Logger.debug("Sem release")
             # Initializing sem.o_time to nonzero value
             self.Semaphore.release()
             # Now the semaphore is safe to use.
-
-        os.system("touch %s" % os.path.normpath(self.Params["CMD_FILE"]))
-        os.system("touch %s" % os.path.normpath(self.Params["RES_FILE"]))
-
-        with open(os.path.normpath(self.Params["CMD_FILE"]), "w+b") as f:
-            f.write(42*b'\0')
-
-        with open(os.path.normpath(self.Params["RES_FILE"]), "w+b") as f:
-            f.write(42*b'\0')
-
-        self.CmdFile = open(os.path.normpath(self.Params["CMD_FILE"]), "r+")
-        self.RespFile = open(os.path.normpath(self.Params["RES_FILE"]), "r+")
-        
+                
         self.Logger.debug("Setup done")
-        return True
-
+        
     def DispatchMsg(self, s):
         #msg = s.encode()
 
@@ -67,70 +68,86 @@ class Server(object):
         #     assert(msg == hashlib.md5(what_i_wrote).hexdigest())
         # except AssertionError:
         #     raise AssertionError("Shared memory corruption after %d iterations." % i)
+        if len(s) > 1:
+            #self.Logger.info(s)
+            s = s.split(":")[1].lstrip()
+            #self.Logger.info(s)
+            self.State = s
 
-        self.Logger.debug(s)
+    def WriteWithLock(self, file_name, msg):
+        self.Logger.debug(msg)
 
+        self.Semaphore.acquire()
+        with open(file_name, "r+") as f:
+            f.write("%s" % msg)
+        self.Semaphore.release()
 
     def Process(self):
-        # I seed the shared memory with a random value which is the current time.
-        what_i_wrote = time.asctime()
-        s = what_i_wrote
+        self.Semaphore.release()
+        self.Semaphore.acquire()
 
-        #utils.write_to_memory(self.Memory, what_i_wrote)
+        with open(os.path.normpath(self.Params["CMD_FILE"]), "r+") as f:
+            fd = f.fileno()
+            flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
+            flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+            
+            #if flag & os.O_NONBLOCK:
+            #    print("O_NONBLOCK!!")
+            
+            res = f.readline()
 
-        utils.say("iteration %d" % self.Cntr)
-        self.Cntr += 1
+        self.DispatchMsg(res)
 
-        if not self.Params["LIVE_DANGEROUSLY"]:
-            # Releasing the semaphore...
-            utils.say("releasing the semaphore")
-            self.Semaphore.release()
-            utils.say("acquiring the semaphore...")
-            self.Semaphore.acquire()
-
-        self.DispatchMsg(utils.read_from_memory(self.Memory))
+        self.Semaphore.release()
 
         if self.State == "IDLE":
-            pass
+            self.Logger.debug("State: IDLE")
+            self.WriteWithLock(os.path.normpath(self.Params["RES_FILE"]), "Counter: %d" % self.Cntr)
+            #self.RespFile.write("Counter: %d" % self.Cntr)
         elif self.State == "INCR":
-            pass
+            self.Logger.debug("State: INCR")
+            self.Cntr += 1
+            self.WriteWithLock(os.path.normpath(self.Params["RES_FILE"]), "Counter: %d" % self.Cntr)
+            #self.RespFile.write("Counter: %d" % self.Cntr)
         elif self.State == "DECR":
-            pass
+            self.Logger.debug("State: DECR")
+            self.Cntr -= 1
+            self.WriteWithLock(os.path.normpath(self.Params["RES_FILE"]), "Counter: %d" % self.Cntr)
+            #self.RespFile.write("Counter: %d" % self.Cntr)
         elif self.State == "QUIT":
-            if not self.Params["LIVE_DANGEROUSLY"]:
-                utils.say("Final release of the semaphore followed by a 5 second pause")
-                self.Semaphore.release()
-                time.sleep(5)
-                # ...before beginning to wait until it is free again.
-                utils.say("Final acquisition of the semaphore")
-                self.Semaphore.acquire()
+            self.Logger.debug("State: QUIT")
+            self.Logger.debug("Final release of the semaphore followed by a 5 second pause")
+            self.Semaphore.release()
+            time.sleep(5)
+            # ...before beginning to wait until it is free again.
+            self.Logger.debug("Final acquisition of the semaphore")
+            self.Semaphore.acquire()
 
-            utils.say("Destroying semaphore and shared memory")
-            # It'd be more natural to call memory.remove() and semaphore.remove() here,
-            # but I'll use the module-level functions instead to demonstrate their use.
-            sysv_ipc.remove_shared_memory(self.Memory.id)
+            self.Logger.debug("Destroying semaphore and shared memory")
+            
+            # TODO: remove file from /dev/shm
             sysv_ipc.remove_semaphore(self.Semaphore.id)
         else:
-            sysv_ipc.remove_shared_memory(self.Memory.id)
-            sysv_ipc.remove_semaphore(self.Semaphore.id)
+            self.Logger.debug("Wrong State")
         
     def Cleanup(self):
-        sysv_ipc.remove_shared_memory(self.Memory.id)
+        self.Logger.debug("Cleanup")
+        # TODO: remove file from /dev/shm
         sysv_ipc.remove_semaphore(self.Semaphore.id)
 
 
 def main():
     serv = Server()
+    serv.Setup()
 
     try:        
-        if serv.Setup():
-            GlobTimer.register_callback(serv.Process)
-        else:
-            sys.exit(0)
-
+        GlobTimer.register_callback(serv.Process)
     except KeyboardInterrupt:
         serv.Cleanup()
         GlobalTimer.unregister_callback(serv.Process)
+    
+    sys.exit(0)
         
 
 if __name__ == "__main__":

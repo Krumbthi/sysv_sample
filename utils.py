@@ -60,6 +60,8 @@ def read_params():
 
                     if name == "PERMISSIONS":
                         value = int(value, 8)
+                    elif name == "CMD_FILE" or name == "RES_FILE":
+                        value = str(value)
                     else:
                         value = int(value)
 

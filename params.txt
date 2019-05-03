@@ -1,5 +1,3 @@
-# These parameters control how Mrs. Premise and Mrs. Conclusion behave.
-
 # ITERATIONS is the number of times they'll talk to one another.
 # LIVE_DANGEROUSLY is a Boolean (0 or 1); if set to 1 the programs
 #    won't use the semaphore to coordinate access to the shared 
@@ -13,4 +11,5 @@ LIVE_DANGEROUSLY=0
 KEY=43
 PERMISSIONS=0600
 SHM_SIZE=4096
-FILENAME="/dev/shm/sharedfile"
+CMD_FILE=/dev/shm/server.cmd
+RES_FILE=/dev/shm/server.res
